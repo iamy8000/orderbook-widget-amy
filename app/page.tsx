@@ -1,9 +1,5 @@
-"use client";
-
-import { useOrderbook } from "@/lib/hyperliquid/useOrderbook";
+import { Orderbook } from "@/components/Orderbook";
 
 export default function Home() {
-  const snapshot = useOrderbook("BTC", 5);
-
-  return <pre>{JSON.stringify(snapshot, null, 2)}</pre>;
+  return <Orderbook coin="BTC" nSigFigs={5} />;
 }
