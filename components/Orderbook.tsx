@@ -22,6 +22,28 @@ interface DerivedRow {
   sizeChange: -1 | 0 | 1;
 }
 
+interface SpreadInfo {
+  absolute: string;
+  percent: string;
+}
+
+function decimalsOf(px: string): number {
+  const dot = px.indexOf(".");
+  return dot === -1 ? 0 : px.length - dot - 1;
+}
+
+function deriveSpread(bestBid: string, bestAsk: string): SpreadInfo | null {
+  if (!bestBid || !bestAsk) return null;
+  const bidNum = Number(bestBid);
+  const askNum = Number(bestAsk);
+  const diff = askNum - bidNum;
+  const mid = (askNum + bidNum) / 2;
+  return {
+    absolute: diff.toFixed(decimalsOf(bestAsk)),
+    percent: `${((diff / mid) * 100).toFixed(2)}%`,
+  };
+}
+
 const EMPTY_RAW: RawRow = { price: "", size: "", cumulative: 0, sizeChange: 0 };
 
 function deriveRawRows(levels: WsLevel[] | undefined, prevLevels: WsLevel[] | undefined): RawRow[] {
@@ -80,7 +102,7 @@ export function Orderbook({ coin, nSigFigs, mantissa }: OrderbookProps) {
     setLastBook(snapshot.book);
   }
 
-  const { bidRows, askRows } = useMemo(() => {
+  const { bidRows, askRows, spread } = useMemo(() => {
     const book = snapshot.book;
 
     const bidsRaw = deriveRawRows(book?.levels[0], prevBook?.levels[0]);
@@ -89,13 +111,19 @@ export function Orderbook({ coin, nSigFigs, mantissa }: OrderbookProps) {
     return {
       bidRows: finalizeRows(bidsRaw, bidsRaw[ROWS - 1].cumulative),
       askRows: finalizeRows(asksRaw, asksRaw[ROWS - 1].cumulative),
+      spread: deriveSpread(bidsRaw[0].price, asksRaw[0].price),
     };
   }, [snapshot.book, prevBook]);
 
   const asksDisplay = useMemo(() => [...askRows].reverse(), [askRows]);
 
   return (
-    <div className="w-fit">
+    <div className="overflow-hidden rounded-lg bg-[#1b1b1d]" style={{ width: ROW_WIDTH_PX }}>
+      <div className="grid grid-cols-3 px-2 py-1.5 text-[11px] text-zinc-500">
+        <span className="text-left">Price</span>
+        <span className="text-right">Size</span>
+        <span className="text-right">Total</span>
+      </div>
       <div>
         {asksDisplay.map((row, i) => (
           <OrderbookRow
@@ -108,6 +136,11 @@ export function Orderbook({ coin, nSigFigs, mantissa }: OrderbookProps) {
             sizeChange={row.sizeChange}
           />
         ))}
+      </div>
+      <div className="grid grid-cols-3 items-center bg-white/5 px-2 py-1.5 text-xs text-zinc-500 [font-variant-numeric:tabular-nums]">
+        <span className="text-left">Spread</span>
+        <span className="text-right text-zinc-300">{spread?.absolute ?? ""}</span>
+        <span className="text-right">{spread?.percent ?? ""}</span>
       </div>
       <div>
         {bidRows.map((row, i) => (

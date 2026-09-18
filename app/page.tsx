@@ -1,5 +1,9 @@
 import { Orderbook } from "@/components/Orderbook";
 
 export default function Home() {
-  return <Orderbook coin="BTC" nSigFigs={5} />;
+  return (
+    <main className="flex flex-1 items-center justify-center p-8">
+      <Orderbook coin="BTC" nSigFigs={5} />
+    </main>
+  );
 }
