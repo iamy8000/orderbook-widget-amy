@@ -34,6 +34,27 @@ let pingTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempt = 0;
 
+export type ConnectionStatus = "connecting" | "open" | "reconnecting";
+
+let status: ConnectionStatus = "connecting";
+const statusListeners = new Set<(status: ConnectionStatus) => void>();
+
+function setStatus(next: ConnectionStatus) {
+  if (status === next) return;
+  status = next;
+  statusListeners.forEach((listener) => listener(status));
+}
+
+export function subscribeStatus(onChange: (status: ConnectionStatus) => void): () => void {
+  statusListeners.add(onChange);
+  onChange(status);
+  return () => statusListeners.delete(onChange);
+}
+
+export function getConnectionStatus(): ConnectionStatus {
+  return status;
+}
+
 function bookPayload(sub: L2BookSubscription) {
   const payload: L2BookSubscription = { type: "l2Book", coin: sub.coin, nSigFigs: sub.nSigFigs };
   if (sub.mantissa !== undefined) payload.mantissa = sub.mantissa;
@@ -97,9 +118,11 @@ function connect() {
 
   const socket = new WebSocket(WS_URL);
   ws = socket;
+  setStatus(reconnectAttempt === 0 ? "connecting" : "reconnecting");
 
   socket.onopen = () => {
     reconnectAttempt = 0;
+    setStatus("open");
     for (const entry of bookRegistry.values()) sendBook("subscribe", entry.subscription);
     for (const entry of tradesRegistry.values()) sendTrades("subscribe", entry.subscription);
     pingTimer = setInterval(sendPing, PING_INTERVAL_MS);
@@ -112,6 +135,7 @@ function connect() {
       clearInterval(pingTimer);
       pingTimer = null;
     }
+    setStatus("reconnecting");
     scheduleReconnect();
   };
 

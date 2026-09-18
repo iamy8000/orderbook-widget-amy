@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useOrderbook } from "@/lib/hyperliquid/useOrderbook";
+import { useOrderbook, useConnectionStatus } from "@/lib/hyperliquid/useOrderbook";
 import type { WsBook, WsLevel } from "@/lib/hyperliquid/types";
 import { OrderbookRow, ROW_WIDTH_PX } from "./OrderbookRow";
 import { MarketControls, UnitToggle, type Coin, type Unit, type TickOption } from "./Controls";
@@ -187,7 +187,7 @@ export function Orderbook() {
     setLastBook(snapshot.book);
   }
 
-  const { bidRows, askRows, spread, tickOptions } = useMemo(() => {
+  const { bidRows, askRows, spread, tickOptions, bidImbalance } = useMemo(() => {
     const book = snapshot.book;
 
     const bidsRaw = deriveRawRows(book?.levels[0], prevBook?.levels[0], unit);
@@ -209,11 +209,16 @@ export function Orderbook() {
       return { multiplier, label: formatTick(tick) || String(multiplier) };
     });
 
+    const totalDepth = bidsRaw.maxCumulative + asksRaw.maxCumulative;
+    // Round to the nearest 0.5% so sub-visual noise doesn't jitter the bar.
+    const bidImbalance = totalDepth > 0 ? Math.round((bidsRaw.maxCumulative / totalDepth) * 200) / 200 : 0.5;
+
     return {
       bidRows: finalizeRows(bidsRaw.rows, bidsRaw.maxCumulative, unit),
       askRows: finalizeRows(asksRaw.rows, asksRaw.maxCumulative, unit),
       spread: deriveSpread(bestBid, bestAsk),
       tickOptions,
+      bidImbalance,
     };
   }, [snapshot.book, prevBook, tickMultiplier, unit]);
 
@@ -222,6 +227,7 @@ export function Orderbook() {
   const lastTrade = snapshot.lastTrade;
   const isLoading = snapshot.book === null;
   const unitLabel = unit === "usdc" ? "USD" : coin;
+  const connectionStatus = useConnectionStatus();
 
   useEffect(() => {
     document.title = lastTrade ? `${lastTrade.px} | ${coin} | Amy Order Book` : `${coin} | Amy Order Book`;
@@ -229,7 +235,15 @@ export function Orderbook() {
 
   return (
     <div className="overflow-hidden rounded-lg bg-[#0f1a1f]" style={{ width: ROW_WIDTH_PX }}>
-      <div className="px-2 py-2 text-sm font-medium text-zinc-200">Order Book</div>
+      <div className="flex items-center justify-between px-2 py-2 text-sm font-medium text-zinc-200">
+        <span>Order Book</span>
+        <span className="flex items-center gap-1.5 text-[11px] font-normal text-zinc-500">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${connectionStatus === "open" ? "bg-[#1fa67d]" : "bg-[#ED7088]"}`}
+          />
+          {connectionStatus === "open" ? "Live" : connectionStatus === "connecting" ? "Connecting…" : "Reconnecting…"}
+        </span>
+      </div>
       <div className="flex items-center justify-between gap-2 border-b border-white/5 px-2 py-1.5 text-xs text-[#949e9c]">
         <MarketControls
           coin={coin}
@@ -262,6 +276,16 @@ export function Orderbook() {
           ))}
         </div>
       )}
+      <div className="flex h-1 w-full">
+        <div
+          className="bg-[#1fa67d] transition-[width] duration-300 ease-out"
+          style={{ width: `${bidImbalance * 100}%` }}
+        />
+        <div
+          className="bg-[#ED7088] transition-[width] duration-300 ease-out"
+          style={{ width: `${(1 - bidImbalance) * 100}%` }}
+        />
+      </div>
       <div className="bg-white/5 px-2 py-0.5 text-xs text-zinc-500 [font-variant-numeric:tabular-nums]">
         {lastTrade && (
           <div className="grid h-4 grid-cols-3 items-center">

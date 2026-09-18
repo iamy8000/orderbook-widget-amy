@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useSyncExternalStore } from "react";
-import { subscribeBook, subscribeTrades } from "./socket";
+import { subscribeBook, subscribeTrades, subscribeStatus, getConnectionStatus, type ConnectionStatus } from "./socket";
 import type { WsBook, WsTrade } from "./types";
 
 export interface OrderbookSnapshot {
@@ -61,4 +61,10 @@ export function useOrderbook(
   const getServerSnapshot = useCallback(() => EMPTY_SNAPSHOT, []);
 
   return useSyncExternalStore(subscribeStore, getSnapshot, getServerSnapshot);
+}
+
+const CONNECTING: ConnectionStatus = "connecting";
+
+export function useConnectionStatus(): ConnectionStatus {
+  return useSyncExternalStore(subscribeStatus, getConnectionStatus, () => CONNECTING);
 }
