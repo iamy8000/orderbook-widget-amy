@@ -17,3 +17,25 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/*
+ * Re-applying the same class name on an already-mounted node does not restart
+ * a CSS animation. OrderbookRow keys this overlay by the row's own `size`
+ * value, forcing a remount (and a fresh 500ms decay) on every genuine change,
+ * even across back-to-back ticks, without a JS timer per row.
+ */
+@keyframes flash-up-bid {
+  from { background-color: rgba(111, 174, 140, 0.35); }
+  to { background-color: transparent; }
+}
+@keyframes flash-up-ask {
+  from { background-color: rgba(201, 123, 114, 0.35); }
+  to { background-color: transparent; }
+}
+@keyframes flash-down {
+  from { background-color: rgba(0, 0, 0, 0.4); }
+  to { background-color: transparent; }
+}
+.flash-up-bid { animation: flash-up-bid 500ms ease-out; }
+.flash-up-ask { animation: flash-up-ask 500ms ease-out; }
+.flash-down { animation: flash-down 500ms ease-out; }

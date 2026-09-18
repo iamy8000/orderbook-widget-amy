@@ -117,6 +117,8 @@ export function Orderbook({ coin, nSigFigs, mantissa }: OrderbookProps) {
 
   const asksDisplay = useMemo(() => [...askRows].reverse(), [askRows]);
 
+  const lastTrade = snapshot.lastTrade;
+
   return (
     <div className="overflow-hidden rounded-lg bg-[#1b1b1d]" style={{ width: ROW_WIDTH_PX }}>
       <div className="grid grid-cols-3 px-2 py-1.5 text-[11px] text-zinc-500">
@@ -137,6 +139,14 @@ export function Orderbook({ coin, nSigFigs, mantissa }: OrderbookProps) {
           />
         ))}
       </div>
+      {lastTrade && (
+        <div className="grid grid-cols-3 items-center px-2 py-1 text-xs text-zinc-500 [font-variant-numeric:tabular-nums]">
+          <span className="text-left">Last</span>
+          <span className={`col-span-2 text-right ${lastTrade.side === "B" ? "text-[#6fae8c]" : "text-[#c97b72]"}`}>
+            {lastTrade.px} {lastTrade.side === "B" ? "▲" : "▼"}
+          </span>
+        </div>
+      )}
       <div className="grid grid-cols-3 items-center bg-white/5 px-2 py-1.5 text-xs text-zinc-500 [font-variant-numeric:tabular-nums]">
         <span className="text-left">Spread</span>
         <span className="text-right text-zinc-300">{spread?.absolute ?? ""}</span>
