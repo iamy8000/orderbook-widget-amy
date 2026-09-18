@@ -24,7 +24,7 @@ interface DerivedRow {
 
 interface SpreadInfo {
   absolute: string;
-  percent: string;
+  bps: string;
 }
 
 function decimalsOf(px: string): number {
@@ -40,7 +40,7 @@ function deriveSpread(bestBid: string, bestAsk: string): SpreadInfo | null {
   const mid = (askNum + bidNum) / 2;
   return {
     absolute: diff.toFixed(decimalsOf(bestAsk)),
-    percent: `${((diff / mid) * 100).toFixed(2)}%`,
+    bps: `${((diff / mid) * 10000).toFixed(2)} bps`,
   };
 }
 
@@ -149,18 +149,20 @@ export function Orderbook({ coin, nSigFigs, mantissa }: OrderbookProps) {
           />
         ))}
       </div>
-      {lastTrade && (
-        <div className="grid grid-cols-3 items-center px-2 py-1 text-xs text-zinc-500 [font-variant-numeric:tabular-nums]">
-          <span className="text-left">Last</span>
-          <span className={`col-span-2 text-right ${lastTrade.side === "B" ? "text-[#1fa67d]" : "text-[#ED7088]"}`}>
-            {lastTrade.px} {lastTrade.side === "B" ? "▲" : "▼"}
-          </span>
+      <div className="bg-white/5 px-2 py-1 text-xs text-zinc-500 [font-variant-numeric:tabular-nums]">
+        {lastTrade && (
+          <div className="grid grid-cols-3 items-center leading-5">
+            <span className="text-left">Last</span>
+            <span className={`col-span-2 text-right ${lastTrade.side === "B" ? "text-[#1fa67d]" : "text-[#ED7088]"}`}>
+              {lastTrade.px} {lastTrade.side === "B" ? "▲" : "▼"}
+            </span>
+          </div>
+        )}
+        <div className="grid grid-cols-3 items-center leading-5">
+          <span className="text-left">Spread</span>
+          <span className="text-right text-zinc-300">{spread?.absolute ?? ""}</span>
+          <span className="text-right">{spread?.bps ?? ""}</span>
         </div>
-      )}
-      <div className="grid grid-cols-3 items-center bg-white/5 px-2 py-1.5 text-xs text-zinc-500 [font-variant-numeric:tabular-nums]">
-        <span className="text-left">Spread</span>
-        <span className="text-right text-zinc-300">{spread?.absolute ?? ""}</span>
-        <span className="text-right">{spread?.percent ?? ""}</span>
       </div>
       <div>
         {bidRows.map((row, i) => (
