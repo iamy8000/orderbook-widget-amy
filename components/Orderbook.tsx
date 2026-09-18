@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOrderbook, useConnectionStatus } from "@/lib/hyperliquid/useOrderbook";
 import type { WsBook, WsLevel } from "@/lib/hyperliquid/types";
 import { OrderbookRow, ROW_WIDTH_PX } from "./OrderbookRow";
@@ -49,10 +49,6 @@ function gcdInt(a: number, b: number): number {
   return a;
 }
 
-// Every returned price (bid or ask) sits on the same aggregation grid, so its
-// distance from any fixed anchor price is an exact multiple of the true tick.
-// GCD across all of them (both sides combined, for more samples) recovers
-// that tick regardless of which individual slots happen to be occupied.
 function deriveActiveTick(...rowGroups: RawRow[][]): number {
   const prices = rowGroups.flatMap((rows) => rows.map((r) => r.price).filter(Boolean));
   if (prices.length < 2) return NaN;
@@ -70,7 +66,8 @@ function deriveActiveTick(...rowGroups: RawRow[][]): number {
 interface RawRow {
   price: string;
   size: string;
-  cumulative: number;
+  cumulativeBase: number;
+  cumulativeNotional: number;
   sizeChange: -1 | 0 | 1;
 }
 
@@ -80,6 +77,8 @@ interface DerivedRow {
   total: string;
   depthFraction: number;
   sizeChange: -1 | 0 | 1;
+  cumulativeBase: number;
+  cumulativeNotional: number;
 }
 
 interface SpreadInfo {
@@ -104,11 +103,12 @@ function deriveSpread(bestBid: string, bestAsk: string): SpreadInfo | null {
   };
 }
 
-const EMPTY_RAW: RawRow = { price: "", size: "", cumulative: 0, sizeChange: 0 };
+const EMPTY_RAW: RawRow = { price: "", size: "", cumulativeBase: 0, cumulativeNotional: 0, sizeChange: 0 };
 
 interface DeriveResult {
   rows: RawRow[];
-  maxCumulative: number;
+  maxCumulativeBase: number;
+  maxCumulativeNotional: number;
 }
 
 function deriveRawRows(
@@ -122,7 +122,8 @@ function deriveRawRows(
   }
 
   const rows: RawRow[] = [];
-  let cumulative = 0;
+  let cumulativeBase = 0;
+  let cumulativeNotional = 0;
   for (let i = 0; i < ROWS; i++) {
     const level = levels?.[i];
     if (!level) {
@@ -130,19 +131,21 @@ function deriveRawRows(
       continue;
     }
     const size = Number(level.sz);
-    const displayAmount = unit === "usdc" ? size * Number(level.px) : size;
-    cumulative += displayAmount;
+    const notional = size * Number(level.px);
+    cumulativeBase += size;
+    cumulativeNotional += notional;
     const prevSize = prevByPrice.get(level.px);
     const sizeChange: -1 | 0 | 1 =
       prevSize === undefined || prevSize === size ? 0 : size > prevSize ? 1 : -1;
     rows.push({
       price: level.px,
-      size: unit === "usdc" ? formatUsd(displayAmount) : level.sz,
-      cumulative,
+      size: unit === "usdc" ? formatUsd(notional) : level.sz,
+      cumulativeBase,
+      cumulativeNotional,
       sizeChange,
     });
   }
-  return { rows, maxCumulative: cumulative };
+  return { rows, maxCumulativeBase: cumulativeBase, maxCumulativeNotional: cumulativeNotional };
 }
 
 function formatTotal(n: number): string {
@@ -155,21 +158,37 @@ function formatUsd(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
+function formatDistance(price: number, mid: number): string {
+  if (!Number.isFinite(mid) || mid === 0) return "";
+  return `${((Math.abs(price - mid) / mid) * 100).toFixed(3)}%`;
+}
+
+function formatAvgPrice(cumulativeNotional: number, cumulativeBase: number, priceStr: string): string {
+  if (cumulativeBase === 0) return "";
+  return (cumulativeNotional / cumulativeBase).toFixed(decimalsOf(priceStr));
+}
+
 // Snap depthFraction to the nearest 1/ROW_WIDTH_PX step so sub-pixel float drift in the
 // cumulative total doesn't register as a "changed" prop and defeat row memoization.
 function roundToPixel(fraction: number): number {
   return Math.round(fraction * ROW_WIDTH_PX) / ROW_WIDTH_PX;
 }
 
-function finalizeRows(raw: RawRow[], maxCumulative: number, unit: Unit): DerivedRow[] {
+function finalizeRows(raw: RawRow[], maxCumulativeBase: number, maxCumulativeNotional: number, unit: Unit): DerivedRow[] {
+  const maxCumulative = unit === "usdc" ? maxCumulativeNotional : maxCumulativeBase;
   const formatter = unit === "usdc" ? formatUsd : formatTotal;
-  return raw.map((row) => ({
-    price: row.price,
-    size: row.size,
-    total: formatter(row.cumulative),
-    depthFraction: maxCumulative > 0 ? roundToPixel(row.cumulative / maxCumulative) : 0,
-    sizeChange: row.sizeChange,
-  }));
+  return raw.map((row) => {
+    const cumulative = unit === "usdc" ? row.cumulativeNotional : row.cumulativeBase;
+    return {
+      price: row.price,
+      size: row.size,
+      total: formatter(cumulative),
+      depthFraction: maxCumulative > 0 ? roundToPixel(cumulative / maxCumulative) : 0,
+      sizeChange: row.sizeChange,
+      cumulativeBase: row.cumulativeBase,
+      cumulativeNotional: row.cumulativeNotional,
+    };
+  });
 }
 
 export function Orderbook() {
@@ -187,7 +206,7 @@ export function Orderbook() {
     setLastBook(snapshot.book);
   }
 
-  const { bidRows, askRows, spread, tickOptions, bidImbalance } = useMemo(() => {
+  const { bidRows, askRows, spread, tickOptions, bidImbalance, mid } = useMemo(() => {
     const book = snapshot.book;
 
     const bidsRaw = deriveRawRows(book?.levels[0], prevBook?.levels[0], unit);
@@ -196,6 +215,7 @@ export function Orderbook() {
     const bestBid = bidsRaw.rows[0].price;
     const bestAsk = asksRaw.rows[0].price;
     const referencePrice = bestBid ? Number(bestBid) : bestAsk ? Number(bestAsk) : NaN;
+    const mid = bestBid && bestAsk ? (Number(bestBid) + Number(bestAsk)) / 2 : NaN;
 
     const activeTick = deriveActiveTick(bidsRaw.rows, asksRaw.rows);
 
@@ -209,16 +229,19 @@ export function Orderbook() {
       return { multiplier, label: formatTick(tick) || String(multiplier) };
     });
 
-    const totalDepth = bidsRaw.maxCumulative + asksRaw.maxCumulative;
+    const bidMax = unit === "usdc" ? bidsRaw.maxCumulativeNotional : bidsRaw.maxCumulativeBase;
+    const askMax = unit === "usdc" ? asksRaw.maxCumulativeNotional : asksRaw.maxCumulativeBase;
+    const totalDepth = bidMax + askMax;
     // Round to the nearest 0.5% so sub-visual noise doesn't jitter the bar.
-    const bidImbalance = totalDepth > 0 ? Math.round((bidsRaw.maxCumulative / totalDepth) * 200) / 200 : 0.5;
+    const bidImbalance = totalDepth > 0 ? Math.round((bidMax / totalDepth) * 200) / 200 : 0.5;
 
     return {
-      bidRows: finalizeRows(bidsRaw.rows, bidsRaw.maxCumulative, unit),
-      askRows: finalizeRows(asksRaw.rows, asksRaw.maxCumulative, unit),
+      bidRows: finalizeRows(bidsRaw.rows, bidsRaw.maxCumulativeBase, bidsRaw.maxCumulativeNotional, unit),
+      askRows: finalizeRows(asksRaw.rows, asksRaw.maxCumulativeBase, asksRaw.maxCumulativeNotional, unit),
       spread: deriveSpread(bestBid, bestAsk),
       tickOptions,
       bidImbalance,
+      mid,
     };
   }, [snapshot.book, prevBook, tickMultiplier, unit]);
 
@@ -228,6 +251,10 @@ export function Orderbook() {
   const isLoading = snapshot.book === null;
   const unitLabel = unit === "usdc" ? "USD" : coin;
   const connectionStatus = useConnectionStatus();
+
+  const [hovered, setHovered] = useState<{ side: "bid" | "ask"; index: number } | null>(null);
+  const handleHover = useCallback((side: "bid" | "ask", index: number) => setHovered({ side, index }), []);
+  const handleLeave = useCallback(() => setHovered(null), []);
 
   useEffect(() => {
     document.title = lastTrade ? `${lastTrade.px} | ${coin} | Amy Order Book` : `${coin} | Amy Order Book`;
@@ -263,17 +290,32 @@ export function Orderbook() {
         <SkeletonRows />
       ) : (
         <div className="flex flex-col gap-px">
-          {asksDisplay.map((row, i) => (
-            <OrderbookRow
-              key={i}
-              side="ask"
-              price={row.price}
-              size={row.size}
-              total={row.total}
-              depthFraction={row.depthFraction}
-              sizeChange={row.sizeChange}
-            />
-          ))}
+          {asksDisplay.map((row, i) => {
+            const isHovered = hovered?.side === "ask" && hovered.index === i;
+            const isSelected = hovered?.side === "ask" && i >= hovered.index;
+            const priceNum = Number(row.price);
+            return (
+              <OrderbookRow
+                key={i}
+                index={i}
+                side="ask"
+                coin={coin}
+                price={row.price}
+                size={row.size}
+                total={row.total}
+                depthFraction={row.depthFraction}
+                sizeChange={row.sizeChange}
+                isHovered={isHovered}
+                isSelected={isSelected}
+                tooltipDistance={isHovered ? formatDistance(priceNum, mid) : ""}
+                tooltipAvgPrice={isHovered ? formatAvgPrice(row.cumulativeNotional, row.cumulativeBase, row.price) : ""}
+                tooltipTotalBase={isHovered ? formatTotal(row.cumulativeBase) : ""}
+                tooltipTotalNotional={isHovered ? formatUsd(row.cumulativeNotional) : ""}
+                onHover={handleHover}
+                onLeave={handleLeave}
+              />
+            );
+          })}
         </div>
       )}
       <div className="flex h-1 w-full">
@@ -305,17 +347,32 @@ export function Orderbook() {
         <SkeletonRows />
       ) : (
         <div className="flex flex-col gap-px">
-          {bidRows.map((row, i) => (
-            <OrderbookRow
-              key={i}
-              side="bid"
-              price={row.price}
-              size={row.size}
-              total={row.total}
-              depthFraction={row.depthFraction}
-              sizeChange={row.sizeChange}
-            />
-          ))}
+          {bidRows.map((row, i) => {
+            const isHovered = hovered?.side === "bid" && hovered.index === i;
+            const isSelected = hovered?.side === "bid" && i <= hovered.index;
+            const priceNum = Number(row.price);
+            return (
+              <OrderbookRow
+                key={i}
+                index={i}
+                side="bid"
+                coin={coin}
+                price={row.price}
+                size={row.size}
+                total={row.total}
+                depthFraction={row.depthFraction}
+                sizeChange={row.sizeChange}
+                isHovered={isHovered}
+                isSelected={isSelected}
+                tooltipDistance={isHovered ? formatDistance(priceNum, mid) : ""}
+                tooltipAvgPrice={isHovered ? formatAvgPrice(row.cumulativeNotional, row.cumulativeBase, row.price) : ""}
+                tooltipTotalBase={isHovered ? formatTotal(row.cumulativeBase) : ""}
+                tooltipTotalNotional={isHovered ? formatUsd(row.cumulativeNotional) : ""}
+                onHover={handleHover}
+                onLeave={handleLeave}
+              />
+            );
+          })}
         </div>
       )}
     </div>
