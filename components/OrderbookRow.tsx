@@ -1,6 +1,6 @@
 import { memo } from "react";
 
-export const ROW_WIDTH_PX = 240;
+export const ROW_WIDTH_PX = 300;
 
 const SIDE_STYLES = {
   bid: { text: "text-[#1fa67d]", bar: "bg-[#1fa67d]/15", flashUp: "flash-up-bid" },
