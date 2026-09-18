@@ -46,7 +46,17 @@ function deriveSpread(bestBid: string, bestAsk: string): SpreadInfo | null {
 
 const EMPTY_RAW: RawRow = { price: "", size: "", cumulative: 0, sizeChange: 0 };
 
-function deriveRawRows(levels: WsLevel[] | undefined, prevLevels: WsLevel[] | undefined): RawRow[] {
+interface DeriveResult {
+  rows: RawRow[];
+  maxCumulative: number;
+}
+
+function deriveRawRows(levels: WsLevel[] | undefined, prevLevels: WsLevel[] | undefined): DeriveResult {
+  const prevByPrice = new Map<string, number>();
+  if (prevLevels) {
+    for (const level of prevLevels) prevByPrice.set(level.px, Number(level.sz));
+  }
+
   const rows: RawRow[] = [];
   let cumulative = 0;
   for (let i = 0; i < ROWS; i++) {
@@ -57,12 +67,12 @@ function deriveRawRows(levels: WsLevel[] | undefined, prevLevels: WsLevel[] | un
     }
     const size = Number(level.sz);
     cumulative += size;
-    const prevSize = prevLevels?.[i] ? Number(prevLevels[i].sz) : undefined;
+    const prevSize = prevByPrice.get(level.px);
     const sizeChange: -1 | 0 | 1 =
       prevSize === undefined || prevSize === size ? 0 : size > prevSize ? 1 : -1;
     rows.push({ price: level.px, size: level.sz, cumulative, sizeChange });
   }
-  return rows;
+  return { rows, maxCumulative: cumulative };
 }
 
 function formatTotal(n: number): string {
@@ -109,9 +119,9 @@ export function Orderbook({ coin, nSigFigs, mantissa }: OrderbookProps) {
     const asksRaw = deriveRawRows(book?.levels[1], prevBook?.levels[1]);
 
     return {
-      bidRows: finalizeRows(bidsRaw, bidsRaw[ROWS - 1].cumulative),
-      askRows: finalizeRows(asksRaw, asksRaw[ROWS - 1].cumulative),
-      spread: deriveSpread(bidsRaw[0].price, asksRaw[0].price),
+      bidRows: finalizeRows(bidsRaw.rows, bidsRaw.maxCumulative),
+      askRows: finalizeRows(asksRaw.rows, asksRaw.maxCumulative),
+      spread: deriveSpread(bidsRaw.rows[0].price, asksRaw.rows[0].price),
     };
   }, [snapshot.book, prevBook]);
 
