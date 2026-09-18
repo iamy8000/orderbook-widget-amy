@@ -235,7 +235,7 @@ export function Orderbook() {
 
   return (
     <div className="overflow-hidden rounded-lg bg-[#0f1a1f]" style={{ width: ROW_WIDTH_PX }}>
-      <div className="flex items-center justify-between px-2 py-2 text-sm font-medium text-zinc-200">
+      <div className="flex items-center justify-between px-2 py-1 text-sm font-medium text-zinc-200">
         <span>Order Book</span>
         <span className="flex items-center gap-1.5 text-[11px] font-normal text-zinc-500">
           <span
