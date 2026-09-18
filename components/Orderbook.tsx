@@ -120,8 +120,8 @@ export function Orderbook({ coin, nSigFigs, mantissa }: OrderbookProps) {
   const lastTrade = snapshot.lastTrade;
 
   return (
-    <div className="overflow-hidden rounded-lg bg-[#1b1b1d]" style={{ width: ROW_WIDTH_PX }}>
-      <div className="grid grid-cols-3 px-2 py-1.5 text-[11px] text-zinc-500">
+    <div className="overflow-hidden rounded-lg bg-[#0f1a1f]" style={{ width: ROW_WIDTH_PX }}>
+      <div className="grid grid-cols-3 px-2 py-1.5 text-[11px] text-[#949e9c]">
         <span className="text-left">Price</span>
         <span className="text-right">Size</span>
         <span className="text-right">Total</span>
@@ -142,7 +142,7 @@ export function Orderbook({ coin, nSigFigs, mantissa }: OrderbookProps) {
       {lastTrade && (
         <div className="grid grid-cols-3 items-center px-2 py-1 text-xs text-zinc-500 [font-variant-numeric:tabular-nums]">
           <span className="text-left">Last</span>
-          <span className={`col-span-2 text-right ${lastTrade.side === "B" ? "text-[#6fae8c]" : "text-[#c97b72]"}`}>
+          <span className={`col-span-2 text-right ${lastTrade.side === "B" ? "text-[#1fa67d]" : "text-[#ED7088]"}`}>
             {lastTrade.px} {lastTrade.side === "B" ? "▲" : "▼"}
           </span>
         </div>

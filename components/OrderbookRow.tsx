@@ -3,8 +3,8 @@ import { memo } from "react";
 export const ROW_WIDTH_PX = 240;
 
 const SIDE_STYLES = {
-  bid: { text: "text-[#6fae8c]", bar: "bg-[#6fae8c]/15", flashUp: "flash-up-bid" },
-  ask: { text: "text-[#c97b72]", bar: "bg-[#c97b72]/15", flashUp: "flash-up-ask" },
+  bid: { text: "text-[#1fa67d]", bar: "bg-[#1fa67d]/15", flashUp: "flash-up-bid" },
+  ask: { text: "text-[#ED7088]", bar: "bg-[#ED7088]/15", flashUp: "flash-up-ask" },
 } as const;
 
 interface OrderbookRowProps {
